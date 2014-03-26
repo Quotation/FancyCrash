@@ -9,13 +9,13 @@ Silent crash considers not user-friendly. Always give user a FANCY crash effect 
 Usage
 -----
 
-Copy `FancyCrash.h|m` to your project. Call `[FancyCrash crash]` to get a random crash effect. Or use `[FancyCrash crashWithEffect:effectOptions:]` to customize the crash animation.
+Copy `FancyCrash.h` & `.m` to your project. Call `[FancyCrash crash]` to get a random crash effect. Or use `[FancyCrash crashWithEffect:effectOptions:]` to customize the crash animation.
 
 
 Customize Effects
 -------
 
-`kFancyCrashEffectBreakGlass1` supports these options.
+Options for `kFancyCrashEffectBreakGlass1`:
 
 ```
 @{
