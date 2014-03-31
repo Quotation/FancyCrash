@@ -9,6 +9,22 @@
 #import "FancyCrash.h"
 @import QuartzCore;
 
+#pragma mark - FCImagePiece
+
+/**
+ *  Splitted image piece
+ */
+@interface FCImagePiece : NSObject
+@property (assign, nonatomic) CGPoint position;
+@property (retain, nonatomic) NSArray *corners;
+@property (retain, nonatomic) UIImage *image;
+@end
+
+@implementation FCImagePiece
+@end
+
+#pragma mark - FancyCrash class
+
 @interface FancyCrash ()
 @property (retain, nonatomic) NSDictionary *effectOptions;
 @end
@@ -66,24 +82,28 @@ static double randomDouble11()
     
     // break screenshot into pieces
     UIImage *screenshot = [self takeScreenshot];
-    NSArray *pieces = [self splitImage:screenshot intoRows:rows columns:columns];
-    CGFloat y = 0;
+    NSArray *pieces = [self polygonSplitImage:screenshot intoRows:rows columns:columns];
     for (NSInteger r = 0; r < rows; r++) {
-        CGFloat x = 0;
-        CGFloat rowHeight = 0;
         for (NSInteger c = 0; c < columns; c++) {
-            UIImage *pic = pieces[r * columns + c];
+            FCImagePiece *piece = pieces[r * columns + c];
             CALayer *picLayer = [CALayer layer];
-            picLayer.contents = (__bridge id)([pic CGImage]);
-            picLayer.frame = CGRectMake(x, y, pic.size.width, pic.size.height);
+            picLayer.contents = (__bridge id)([piece.image CGImage]);
+            picLayer.frame = CGRectMake(piece.position.x, piece.position.y, piece.image.size.width, piece.image.size.height);
             [animView.layer addSublayer:picLayer];
             
-            x += pic.size.width;
-            if (c == 0) {
-                rowHeight = pic.size.height;
-            }
+            // clip to polygon path
+            UIBezierPath *clipPath = [UIBezierPath bezierPath];
+            [clipPath moveToPoint:[piece.corners[0] CGPointValue]];
+            [clipPath addLineToPoint:[piece.corners[1] CGPointValue]];
+            [clipPath addLineToPoint:[piece.corners[2] CGPointValue]];
+            [clipPath addLineToPoint:[piece.corners[3] CGPointValue]];
+            [clipPath closePath];
+            [clipPath applyTransform:CGAffineTransformMakeTranslation(-piece.position.x, -piece.position.y)];
+            
+            CAShapeLayer *maskLayer = [CAShapeLayer layer];
+            maskLayer.path = [clipPath CGPath];
+            picLayer.mask = maskLayer;
         }
-        y += rowHeight;
     }
     
     [UIApplication sharedApplication].keyWindow.rootViewController = animController;
@@ -149,29 +169,112 @@ static double randomDouble11()
     return screenshot;
 }
 
-- (NSArray *)splitImage:(UIImage *)image intoRows:(NSUInteger)rowCount columns:(NSUInteger)colCount {
+- (NSArray *)rectangleSplitImage:(UIImage *)image intoRows:(NSUInteger)rowCount columns:(NSUInteger)colCount {
     if (rowCount == 0 || colCount == 0) {
         return nil;
     }
     
-    NSMutableArray *resultImages = [NSMutableArray arrayWithCapacity:rowCount * colCount];
+    NSMutableArray *resultPieces = [NSMutableArray arrayWithCapacity:rowCount * colCount];
     
-    CGFloat blockWidth = image.size.width / colCount * image.scale;
-    CGFloat blockHeight = image.size.height / rowCount * image.scale;
-    CGImageRef cgSelf = image.CGImage;
+    CGFloat scale = image.scale;
+    CGFloat blockWidth = image.size.width / colCount;
+    CGFloat blockHeight = image.size.height / rowCount;
     
     for (NSUInteger row = 0; row < rowCount; row++) {
         for (NSUInteger col = 0; col < colCount; col++) {
             CGRect rcBlock = CGRectMake(blockWidth * col, blockHeight * row, blockWidth, blockHeight);
-            CGImageRef cgBlock = CGImageCreateWithImageInRect(cgSelf, rcBlock);
-            UIImage *imgBlock = [UIImage imageWithCGImage:cgBlock scale:image.scale orientation:image.imageOrientation];
+            rcBlock = CGRectIntegral(rcBlock);
+            
+            FCImagePiece *piece = [FCImagePiece new];
+            piece.position = rcBlock.origin;
+            piece.corners = @[[NSValue valueWithCGPoint:rcBlock.origin],
+                              [NSValue valueWithCGPoint:CGPointMake(rcBlock.origin.x + rcBlock.size.width, rcBlock.origin.y)],
+                              [NSValue valueWithCGPoint:CGPointMake(rcBlock.origin.x + rcBlock.size.width, rcBlock.origin.y + rcBlock.size.height)],
+                              [NSValue valueWithCGPoint:CGPointMake(rcBlock.origin.x, rcBlock.origin.y + rcBlock.size.height)]];
+            
+            rcBlock.origin.x *= scale;
+            rcBlock.origin.y *= scale;
+            rcBlock.size.width *= scale;
+            rcBlock.size.height *= scale;
+            CGImageRef cgBlock = CGImageCreateWithImageInRect(image.CGImage, rcBlock);
+            piece.image = [UIImage imageWithCGImage:cgBlock scale:scale orientation:image.imageOrientation];
             CGImageRelease(cgBlock);
             
-            [resultImages addObject:imgBlock];
+            [resultPieces addObject:piece];
         }
     }
     
-    return [NSArray arrayWithArray:resultImages];
+    return [NSArray arrayWithArray:resultPieces];
+}
+
+- (NSArray *)polygonSplitImage:(UIImage *)image intoRows:(NSUInteger)rowCount columns:(NSUInteger)colCount {
+    if (rowCount == 0 || colCount == 0) {
+        return nil;
+    }
+    
+    NSMutableArray *resultPieces = [NSMutableArray arrayWithCapacity:rowCount * colCount];
+    
+    CGFloat scale = image.scale;
+    CGFloat blockWidth = image.size.width / colCount;
+    CGFloat blockHeight = image.size.height / rowCount;
+    
+    // random move cell corners
+    CGPoint *corners = (CGPoint *)malloc(sizeof(CGPoint) * (rowCount + 1) * (colCount + 1));
+    CGFloat maxMoveX = blockWidth * 0.3;
+    CGFloat maxMoveY = blockHeight * 0.3;
+    for (NSUInteger row = 0; row <= rowCount; row++) {
+        for (NSUInteger col = 0; col <= colCount; col++) {
+            CGPoint *pt = corners + row * (colCount + 1) + col;
+            pt->x = blockWidth * col;
+            pt->y = blockHeight * row;
+            if (col != 0 && col != colCount) {
+                pt->x += randomDouble11() * maxMoveX;
+            }
+            if (row != 0 && row != rowCount) {
+                pt->y += randomDouble11() * maxMoveY;
+            }
+        }
+    }
+    
+    for (NSUInteger row = 0; row < rowCount; row++) {
+        for (NSUInteger col = 0; col < colCount; col++) {
+            // 4 corners make a polygon
+            CGPoint *plt = corners + row * (colCount + 1) + col;
+            CGPoint lt = plt[0];
+            CGPoint rt = plt[1];
+            CGPoint rb = plt[colCount + 2];
+            CGPoint lb = plt[colCount + 1];
+            
+            // bounding rect for sub image
+            CGFloat minX = MIN(lt.x, lb.x);
+            CGFloat minY = MIN(lt.y, rt.y);
+            CGFloat maxX = MAX(rt.x, rb.x);
+            CGFloat maxY = MAX(lb.y, rb.y);
+            CGRect rcBlock = CGRectMake(minX, minY, maxX - minX, maxY - minY);
+            rcBlock = CGRectIntegral(rcBlock);
+            
+            FCImagePiece *piece = [FCImagePiece new];
+            piece.position = rcBlock.origin;
+            piece.corners = @[[NSValue valueWithCGPoint:lt],
+                              [NSValue valueWithCGPoint:rt],
+                              [NSValue valueWithCGPoint:rb],
+                              [NSValue valueWithCGPoint:lb]];
+            
+            rcBlock.origin.x *= scale;
+            rcBlock.origin.y *= scale;
+            rcBlock.size.width *= scale;
+            rcBlock.size.height *= scale;
+            CGImageRef cgBlock = CGImageCreateWithImageInRect(image.CGImage, rcBlock);
+            piece.image = [UIImage imageWithCGImage:cgBlock scale:scale orientation:image.imageOrientation];
+            CGImageRelease(cgBlock);
+            
+            [resultPieces addObject:piece];
+        }
+    }
+    
+    free(corners);
+    
+    return [NSArray arrayWithArray:resultPieces];
 }
 
 @end
