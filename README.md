@@ -19,8 +19,9 @@ Options for `kFancyCrashEffectBreakGlass1`:
 
 ```
 @{
-    @"duration"   : @0.9,     // animation duration
-    @"rows"       : @6,       // row count
-    @"columns"    : @4,       // column count
+    @"crackDuration"  : @0.5,     // crack animation duration
+    @"fallDuration"   : @0.9,     // fall animation duration
+    @"rows"           : @6,       // row count
+    @"columns"        : @4,       // column count
 }
 ```

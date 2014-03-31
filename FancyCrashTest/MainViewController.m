@@ -40,9 +40,9 @@
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
 {
-    [FancyCrash crash];
-//    [FancyCrash crashWithEffect:kFancyCrashEffectBreakGlass1
-//                  effectOptions:@{@"rows": @8, @"columns": @6}];
+//    [FancyCrash crash];
+    [FancyCrash crashWithEffect:kFancyCrashEffectBreakGlass1
+                  effectOptions:@{/*@"fallDuration": @1.6,*/ @"rows": @8, @"columns": @6}];
 }
 
 @end

@@ -69,11 +69,15 @@ static double randomDouble11()
 
 - (void)breakGlass1
 {
-    NSTimeInterval duration = [self doubleOptionForKey:@"duration" defaultValue:0.9];
+    NSTimeInterval crackDuration = [self doubleOptionForKey:@"crackDuration" defaultValue:0.5];
+    NSTimeInterval fallDuration = [self doubleOptionForKey:@"fallDuration" defaultValue:0.9];
     NSInteger rows = [self integerOptionForKey:@"rows" defaultValue:6];
     NSInteger columns = [self integerOptionForKey:@"columns" defaultValue:4];
+    fallDuration = MAX(fallDuration, 0.2);
     rows = MAX(rows, 2);
     columns = MAX(columns, 2);
+    
+    NSTimeInterval totalDuration = crackDuration + fallDuration;
     
     // animation container
     UIViewController *animController = [UIViewController new];
@@ -83,13 +87,17 @@ static double randomDouble11()
     // break screenshot into pieces
     UIImage *screenshot = [self takeScreenshot];
     NSArray *pieces = [self polygonSplitImage:screenshot intoRows:rows columns:columns];
+    
+    // joint image pieces to fake current UI
+    NSMutableArray *allPicLayers = [NSMutableArray arrayWithCapacity:pieces.count];
     for (NSInteger r = 0; r < rows; r++) {
         for (NSInteger c = 0; c < columns; c++) {
             FCImagePiece *piece = pieces[r * columns + c];
             CALayer *picLayer = [CALayer layer];
-            picLayer.contents = (__bridge id)([piece.image CGImage]);
+            picLayer.contents = (__bridge id)[piece.image CGImage];
             picLayer.frame = CGRectMake(piece.position.x, piece.position.y, piece.image.size.width, piece.image.size.height);
             [animView.layer addSublayer:picLayer];
+            [allPicLayers addObject:picLayer];
             
             // clip to polygon path
             UIBezierPath *clipPath = [UIBezierPath bezierPath];
@@ -106,21 +114,54 @@ static double randomDouble11()
         }
     }
     
+    // add cracks
+    UIBezierPath *cracksPath = [UIBezierPath bezierPath];
+    for (NSInteger r = 0; r < rows; r++) {
+        for (NSInteger c = 0; c < columns; c++) {
+            FCImagePiece *piece = pieces[r * columns + c];
+            [cracksPath moveToPoint:[piece.corners[0] CGPointValue]];
+            [cracksPath addLineToPoint:[piece.corners[1] CGPointValue]];
+            [cracksPath addLineToPoint:[piece.corners[2] CGPointValue]];
+            [cracksPath addLineToPoint:[piece.corners[3] CGPointValue]];
+            [cracksPath addLineToPoint:[piece.corners[0] CGPointValue]];
+        }
+    }
+    
+    CAShapeLayer *cracksLayer = [CAShapeLayer layer];
+    cracksLayer.frame = animView.bounds;
+    cracksLayer.path = [cracksPath CGPath];
+    cracksLayer.strokeColor = [[UIColor blackColor] CGColor];
+    cracksLayer.fillColor = nil;
+    cracksLayer.lineJoin = kCALineJoinBevel;
+    [animView.layer addSublayer:cracksLayer];
+    
     [UIApplication sharedApplication].keyWindow.rootViewController = animController;
     
-    // animation
+    // cracks animation
+    CABasicAnimation *cracksAnim = [CABasicAnimation animationWithKeyPath:@"lineWidth"];
+    cracksAnim.duration = 0.1;
+    cracksAnim.fillMode = kCAFillModeForwards;
+    cracksAnim.removedOnCompletion = NO;
+    cracksAnim.fromValue = @0.0;
+    cracksAnim.toValue = @2.0;
+    [cracksLayer addAnimation:cracksAnim forKey:nil];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(crackDuration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [cracksLayer removeFromSuperlayer];
+    });
+    
+    // pieces animation
     CGFloat beginTimeMax = 0.1;
     CGFloat xMoveMax = animView.bounds.size.width / columns * 0.1;
     CGFloat yMove = animView.bounds.size.height * (1.0 + 1.0 / rows);
     CGFloat rotateMax = M_PI * 0.1;
     CAMediaTimingFunction *timingEaseIn = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseIn];
     
-    NSArray *allPicLayers = animView.layer.sublayers;
     for (NSInteger i = 0; i < rows * columns; i++) {
         CALayer *picLayer = allPicLayers[i];
         CABasicAnimation *anim = [CABasicAnimation animationWithKeyPath:@"transform"];
-        anim.beginTime = CACurrentMediaTime() + beginTimeMax * randomDouble01();
-        anim.duration = duration;
+        anim.beginTime = CACurrentMediaTime() + crackDuration + beginTimeMax * randomDouble01();
+        anim.duration = fallDuration;
         anim.fillMode = kCAFillModeForwards;
         anim.cumulative = YES;
         anim.removedOnCompletion = NO;
@@ -132,7 +173,7 @@ static double randomDouble11()
         [picLayer addAnimation:anim forKey:nil];
     }
     
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(duration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(totalDuration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self exitApp];
     });
 }
