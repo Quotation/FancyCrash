@@ -98,19 +98,6 @@ static double randomDouble11()
             picLayer.frame = CGRectMake(piece.position.x, piece.position.y, piece.image.size.width, piece.image.size.height);
             [animView.layer addSublayer:picLayer];
             [allPicLayers addObject:picLayer];
-            
-            // clip to polygon path
-            UIBezierPath *clipPath = [UIBezierPath bezierPath];
-            [clipPath moveToPoint:[piece.corners[0] CGPointValue]];
-            [clipPath addLineToPoint:[piece.corners[1] CGPointValue]];
-            [clipPath addLineToPoint:[piece.corners[2] CGPointValue]];
-            [clipPath addLineToPoint:[piece.corners[3] CGPointValue]];
-            [clipPath closePath];
-            [clipPath applyTransform:CGAffineTransformMakeTranslation(-piece.position.x, -piece.position.y)];
-            
-            CAShapeLayer *maskLayer = [CAShapeLayer layer];
-            maskLayer.path = [clipPath CGPath];
-            picLayer.mask = maskLayer;
         }
     }
     
@@ -306,8 +293,27 @@ static double randomDouble11()
             rcBlock.size.width *= scale;
             rcBlock.size.height *= scale;
             CGImageRef cgBlock = CGImageCreateWithImageInRect(image.CGImage, rcBlock);
-            piece.image = [UIImage imageWithCGImage:cgBlock scale:scale orientation:image.imageOrientation];
+            
+            // clip image to polygon
+            UIBezierPath *clipPath = [UIBezierPath bezierPath];
+            [clipPath moveToPoint:lt];
+            [clipPath addLineToPoint:rt];
+            [clipPath addLineToPoint:rb];
+            [clipPath addLineToPoint:lb];
+            [clipPath closePath];
+            [clipPath applyTransform:CGAffineTransformMakeTranslation(-minX, -minY)];
+            [clipPath applyTransform:CGAffineTransformMakeScale(scale, scale)];
+            
+            UIGraphicsBeginImageContextWithOptions(rcBlock.size, NO, 1);
+            [clipPath addClip];
+            [[UIImage imageWithCGImage:cgBlock] drawAtPoint:CGPointZero];
             CGImageRelease(cgBlock);
+            UIImage *clippedImage = UIGraphicsGetImageFromCurrentImageContext();
+            UIGraphicsEndImageContext();
+
+            piece.image = [UIImage imageWithCGImage:clippedImage.CGImage
+                                              scale:scale
+                                        orientation:image.imageOrientation];
             
             [resultPieces addObject:piece];
         }
